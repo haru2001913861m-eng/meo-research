@@ -61,7 +61,9 @@ jobs:
           python detail.py --workers 2 --shard ${{ matrix.shard }}/${{ github.event.inputs.shards }} ${LIM:+--limit $LIM}
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: detail_${{ matrix.shard }}, path: data/detail_${{ matrix.shard }}.jsonl }
+        with:
+          name: detail_${{ matrix.shard }}
+          path: data/detail_${{ matrix.shard }}.jsonl
 
   merge:
     needs: detail
