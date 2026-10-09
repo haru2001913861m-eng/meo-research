@@ -45,7 +45,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@v4
         with: { ref: main }
@@ -58,7 +58,7 @@ jobs:
           DETAIL_OUT: detail_${{ matrix.shard }}.jsonl
         run: |
           LIM="${{ github.event.inputs.limit }}"
-          python detail.py --workers 2 --shard ${{ matrix.shard }}/${{ github.event.inputs.shards }} ${LIM:+--limit $LIM}
+          python detail.py --workers 3 --shard ${{ matrix.shard }}/${{ github.event.inputs.shards }} ${LIM:+--limit $LIM}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
