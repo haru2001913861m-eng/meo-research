@@ -1,0 +1,87 @@
+name: meo-research
+
+on:
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: "詳細収集の並列数"
+        default: "4"
+      limit:
+        description: "1シャードあたりの店数上限（空=全部）"
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: research
+  cancel-in-progress: false
+
+jobs:
+  frame:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt && python -m playwright install --with-deps chromium
+      - name: 母集団（残りの検索）
+        run: python frame.py
+      - name: 保存
+        run: |
+          git config user.name "meo-research-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data/frame.jsonl data/frame_done.json
+          git commit -m "frame: $(python -c "import json;print(len(json.load(open('data/frame_done.json'))))")/339 検索" || echo "no change"
+          git pull --rebase && git push
+      - uses: actions/upload-artifact@v4
+        with: { name: frame, path: data/frame.jsonl }
+
+  detail:
+    needs: frame
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - run: git pull
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt && python -m playwright install --with-deps chromium
+      - name: 店ごとの詳細（シャード ${{ matrix.shard }}）
+        env:
+          DETAIL_OUT: detail_${{ matrix.shard }}.jsonl
+        run: |
+          LIM="${{ github.event.inputs.limit }}"
+          python detail.py --workers 2 --shard ${{ matrix.shard }}/${{ github.event.inputs.shards }} ${LIM:+--limit $LIM}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: detail_${{ matrix.shard }}, path: data/detail_${{ matrix.shard }}.jsonl }
+
+  merge:
+    needs: detail
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - run: git pull
+      - uses: actions/download-artifact@v4
+        with: { pattern: detail_*, path: data, merge-multiple: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - name: 集計
+        run: python analyze.py > data/result_latest.md
+      - name: 保存
+        run: |
+          git config user.name "meo-research-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data/detail_*.jsonl data/result_latest.md
+          git commit -m "detail: $(cat data/detail_*.jsonl | wc -l) 店／集計更新" || echo "no change"
+          git pull --rebase && git push
