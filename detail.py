@@ -12,7 +12,7 @@ import json, os, re, sys, time
 from concurrent.futures import ThreadPoolExecutor
 from common import DATA, Blocked, accept_consent, append_jsonl, blocked, browser, nap, on_block, read_jsonl, rel_days, sync_playwright
 
-FRAME = os.path.join(DATA, "frame.jsonl")
+FRAME = os.path.join(DATA, os.getenv("FRAME_OUT", "frame.jsonl"))
 OUT = os.path.join(DATA, os.getenv("DETAIL_OUT", "detail.jsonl"))
 KW_ITEM = re.compile(r"美味|おいし|うま|食べ|飲|ケーキ|コーヒー|珈琲|ラーメン|麺|スープ|餃子|ビール|刺身|焼|カット|カラー|パーマ|トリートメント|施術|マッサージ|整体|矯正|メニュー|ランチ|セット|デザート|パン")
 KW_PEOPLE = re.compile(r"店員|スタッフ|店主|マスター|オーナー|先生|さんが|さんの|対応|接客|親切|丁寧|優しい|笑顔|説明")
@@ -111,6 +111,7 @@ def read_store(pg, href: str) -> dict:
     m = re.search(r"写真\s*([\d,]+)\s*枚", body) or re.search(r"([\d,]+)\s*枚の写真", body)
     rec["photos"] = int(m.group(1).replace(",", "")) if m else None
     rec["reserve"] = bool(re.search(r"予約|オンラインで注文", body))
+    rec["recent_open"] = ("最近オープン" in body) or ("新規オープン" in body)
     head = body.split("ルート・乗換")[0]
     rec["editorial"] = bool(re.search(r"\n[^\n·]{15,80}\n", head))
     rec["hours_days"] = None; rec["hours_break"] = None; rec["special_hours"] = None
@@ -176,11 +177,16 @@ def main():
     limit = int(args[args.index("--limit") + 1]) if "--limit" in args else None
     ind = args[args.index("--industry") + 1] if "--industry" in args else None
     shard = args[args.index("--shard") + 1] if "--shard" in args else None   # 例 "2/4"
+    max_reviews = int(os.getenv("DETAIL_MAX_REVIEWS", "0") or 0)             # 例 40 → 口コミ40件以下の店だけ（開業直後の候補）
+    redo = os.getenv("DETAIL_REDO", "") == "1"                                # 1 → 他の detail_*.jsonl の済みを無視（自分の出力だけ再開に使う）
     done_ids = set()
     for fn in os.listdir(DATA):
         if fn.startswith("detail") and fn.endswith(".jsonl"):
+            if redo and fn != os.path.basename(OUT):
+                continue
             done_ids |= {r["cid"] for r in read_jsonl(os.path.join(DATA, fn)) if r.get("cid")}
-    frame = [r for r in read_jsonl(FRAME) if r.get("cid") and r["cid"] not in done_ids and (not ind or r["industry"] == ind)]
+    frame = [r for r in read_jsonl(FRAME) if r.get("cid") and r["cid"] not in done_ids and (not ind or r["industry"] == ind)
+             and (not max_reviews or (r.get("reviews") or 0) <= max_reviews)]
     seen = set(); todo = []
     for r in frame:
         if r["cid"] in seen:

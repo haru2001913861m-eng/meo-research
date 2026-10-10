@@ -9,6 +9,9 @@ on:
       limit:
         description: "1シャードあたりの店数上限（空=全部）"
         default: ""
+      study:
+        description: "空=通常／new=開業直後（口コミ40件以下の店を再取得して『最近オープン』表示を拾う。出力 detail_new_*）"
+        default: ""
 
 permissions:
   contents: write
@@ -27,16 +30,18 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -r requirements.txt && python -m playwright install --with-deps chromium
       - name: 母集団（残りの検索）
+        env:
+          FRAME_SUFFIX: ""
         run: python frame.py
       - name: 保存
         run: |
           git config user.name "meo-research-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add data/frame.jsonl data/frame_done.json
-          git commit -m "frame: $(python -c "import json;print(len(json.load(open('data/frame_done.json'))))")/339 検索" || echo "no change"
+          git add data/frame*.jsonl data/frame*_done.json
+          git commit -m "frame: 検索の保存（study=${{ github.event.inputs.study }}）" || echo "no change"
           git pull --rebase && git push
       - uses: actions/upload-artifact@v4
-        with: { name: frame, path: data/frame.jsonl }
+        with: { name: frame, path: data/frame*.jsonl }
 
   detail:
     needs: frame
@@ -55,7 +60,9 @@ jobs:
       - run: pip install -r requirements.txt && python -m playwright install --with-deps chromium
       - name: 店ごとの詳細（シャード ${{ matrix.shard }}）
         env:
-          DETAIL_OUT: detail_${{ matrix.shard }}.jsonl
+          DETAIL_OUT: ${{ github.event.inputs.study == 'new' && 'detail_new_' || 'detail_' }}${{ matrix.shard }}.jsonl
+          DETAIL_REDO: ${{ github.event.inputs.study == 'new' && '1' || '' }}
+          DETAIL_MAX_REVIEWS: ${{ github.event.inputs.study == 'new' && '40' || '0' }}
         run: |
           LIM="${{ github.event.inputs.limit }}"
           python detail.py --workers 3 --shard ${{ matrix.shard }}/${{ github.event.inputs.shards }} ${LIM:+--limit $LIM}
@@ -63,7 +70,7 @@ jobs:
         if: always()
         with:
           name: detail_${{ matrix.shard }}
-          path: data/detail_${{ matrix.shard }}.jsonl
+          path: data/detail*_${{ matrix.shard }}.jsonl
 
   merge:
     needs: detail
@@ -84,6 +91,6 @@ jobs:
         run: |
           git config user.name "meo-research-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add data/detail_*.jsonl data/result_latest.md
+          git add data/detail*.jsonl data/result_latest.md
           git commit -m "detail: $(cat data/detail_*.jsonl | wc -l) 店／集計更新" || echo "no change"
           git pull --rebase && git push

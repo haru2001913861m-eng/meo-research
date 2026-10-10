@@ -14,8 +14,9 @@ CITIES = ["札幌市中央区", "旭川市", "函館市", "青森市", "盛岡�
           "松江市", "岡山市北区", "広島市中区", "福山市", "山口市", "徳島市", "高松市", "松山市", "高知市", "福岡市中央区",
           "北九州市小倉北区", "佐賀市", "長崎市", "熊本市中央区", "大分市", "宮崎市", "鹿児島市", "那覇市"]
 INDUSTRIES = ["カフェ", "美容室", "整体", "ラーメン", "居酒屋"]
-OUT = os.path.join(DATA, "frame.jsonl")
-DONE = os.path.join(DATA, "frame_done.json")
+SUFFIX = os.getenv("FRAME_SUFFIX", "")            # 例 "新規オープン" → 開業直後の店を集める
+OUT = os.path.join(DATA, os.getenv("FRAME_OUT", "frame.jsonl"))
+DONE = os.path.join(DATA, os.getenv("FRAME_DONE", "frame_done.json"))
 
 
 def parse_card(a) -> dict:
@@ -57,6 +58,8 @@ def parse_card(a) -> dict:
                         rec["price"] = x[:12]
         elif re.search(r"営業中|営業時間外|営業開始|営業終了|閉業|臨時休業", l):
             rec["status"] = l[:40]
+        if "最近オープン" in l or "新規オープン" in l:
+            rec["recent_open"] = True
         elif 12 <= len(l) <= 80 and rec["editorial"] is None and l != rec["name"] and not re.search(r"\d\.\d", l) and "·" not in l:
             rec["editorial"] = l[:80]
     return rec
@@ -64,7 +67,7 @@ def parse_card(a) -> dict:
 
 def run(limit: int | None = None):
     done = set(json.load(open(DONE))) if os.path.exists(DONE) else set()
-    todo = [(c, i) for c in CITIES for i in INDUSTRIES if f"{i} {c}" not in done]
+    todo = [(c, i) for c in CITIES for i in INDUSTRIES if (f"{i} {SUFFIX} {c}".replace("  ", " ") if SUFFIX else f"{i} {c}") not in done]
     if limit:
         todo = todo[:limit]
     print(f"[frame] 検索 {len(todo)} 件（済 {len(done)}）", flush=True)
@@ -72,7 +75,7 @@ def run(limit: int | None = None):
         b, ctx = browser(p)
         pg = ctx.new_page()
         for n, (city, ind) in enumerate(todo, 1):
-            q = f"{ind} {city}"
+            q = f"{ind} {SUFFIX} {city}".replace("  ", " ") if SUFFIX else f"{ind} {city}"
             t0 = time.time()
             if n % 40 == 0:   # メモリ対策: 40検索ごとにブラウザを作り直す
                 try:
