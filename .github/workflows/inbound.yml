@@ -1,0 +1,87 @@
+name: meo-inbound
+
+on:
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: "詳細収集の並列数"
+        default: "8"
+      limit:
+        description: "1シャードあたりの店数上限（空=全部）"
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: inbound
+  cancel-in-progress: false
+
+jobs:
+  frame:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt && python -m playwright install --with-deps chromium
+      - name: 母集団（日英の検索）
+        run: python frame_inbound.py
+      - name: 保存
+        run: |
+          git config user.name "meo-research-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data/inb_frame.jsonl data/inb_frame_done.json
+          git commit -m "inbound frame: 日英検索の保存" || echo "no change"
+          git pull --rebase && git push
+
+  detail:
+    needs: frame
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - run: git pull
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt && python -m playwright install --with-deps chromium
+      - name: 店ごとの詳細・英語画面（シャード ${{ matrix.shard }}）
+        env:
+          INB_DETAIL_OUT: inb_detail_${{ matrix.shard }}.jsonl
+        run: |
+          LIM="${{ github.event.inputs.limit }}"
+          python detail_inbound.py --workers 3 --shard ${{ matrix.shard }}/${{ github.event.inputs.shards }} ${LIM:+--limit $LIM}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: inb_detail_${{ matrix.shard }}
+          path: data/inb_detail_${{ matrix.shard }}.jsonl
+
+  merge:
+    needs: detail
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - run: git pull
+      - uses: actions/download-artifact@v4
+        with: { pattern: inb_detail_*, path: data, merge-multiple: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r requirements.txt
+      - name: 集計
+        run: python analyze_inbound.py > data/inb_result_latest.md || echo "analyze later"
+      - name: 保存
+        run: |
+          git config user.name "meo-research-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data/inb_detail*.jsonl data/inb_result_latest.md || true
+          git commit -m "inbound detail: $(cat data/inb_detail_*.jsonl | wc -l) 店／集計" || echo "no change"
+          git pull --rebase && git push
