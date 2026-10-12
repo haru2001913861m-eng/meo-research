@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """母集団づくり: 都市×業種で検索し、一覧から店（名前・評価・口コミ件数・業種・住所・順位・営業状態・紹介文）を集める。
 実行: python3 frame.py [--limit N]   出力: data/frame.jsonl（再開可・同じ検索は飛ばす）
+標本調査（業種を広げる）: python3 frame.py --sample [--industry 歯科] [--city 那覇市]
+  → 13業種×10都市。出力 data/ind_frame.jsonl / ind_frame_done.json（既存5業種の frame.jsonl とは混ざらない）
 17_全国5000店調査_計画 §0。閲覧のみ・ログインなし・2〜5秒間隔。"""
 from __future__ import annotations
 import json, os, re, sys, time
@@ -14,9 +16,25 @@ CITIES = ["札幌市中央区", "旭川市", "函館市", "青森市", "盛岡�
           "松江市", "岡山市北区", "広島市中区", "福山市", "山口市", "徳島市", "高松市", "松山市", "高知市", "福岡市中央区",
           "北九州市小倉北区", "佐賀市", "長崎市", "熊本市中央区", "大分市", "宮崎市", "鹿児島市", "那覇市"]
 INDUSTRIES = ["カフェ", "美容室", "整体", "ラーメン", "居酒屋"]
+# 10/12 会長: 全業種に広げる。まず標本（13業種×地域の偏らない10都市）
+SAMPLE = "--sample" in sys.argv
+SAMPLE_INDUSTRIES = ["ネイルサロン", "まつげサロン", "エステ", "接骨院", "鍼灸院", "歯科", "皮膚科", "美容クリニック",
+                     "焼肉", "寿司", "パン屋", "ペットサロン", "学習塾"]
+SAMPLE_CITIES = ["札幌市中央区", "仙台市青葉区", "新宿区", "金沢市", "名古屋市中区", "大阪市北区", "広島市中区", "松山市",
+                 "福岡市中央区", "那覇市"]   # 北海道・東北・関東・北陸・東海・近畿・中国・四国・九州・沖縄から1つずつ
+if SAMPLE:
+    CITIES, INDUSTRIES = SAMPLE_CITIES, SAMPLE_INDUSTRIES
+    os.environ.setdefault("FRAME_OUT", "ind_frame.jsonl")
+    os.environ.setdefault("FRAME_DONE", "ind_frame_done.json")
+if "--industry" in sys.argv:
+    INDUSTRIES = [sys.argv[sys.argv.index("--industry") + 1]]
+if "--city" in sys.argv:
+    CITIES = [sys.argv[sys.argv.index("--city") + 1]]
 SUFFIX = os.getenv("FRAME_SUFFIX", "")            # 例 "新規オープン" → 開業直後の店を集める
 OUT = os.path.join(DATA, os.getenv("FRAME_OUT", "frame.jsonl"))
 DONE = os.path.join(DATA, os.getenv("FRAME_DONE", "frame_done.json"))
+LIMITED = "表示が制限されています"
+COOLDOWN = int(os.getenv("FRAME_COOLDOWN", "1800"))
 
 
 def parse_card(a) -> dict:
@@ -46,6 +64,7 @@ def parse_card(a) -> dict:
         if m:
             rec["rating"] = float(m.group(1))
             rec["reviews"] = int(m.group(2).replace(",", ""))
+    rec["sponsored"] = "スポンサー" in lines[:3]   # 広告枠（順位は既存どおり一覧の並びのまま）
     for l in lines:
         if "·" in l and rec["category"] is None and not re.search(r"営業|閉店|開始|終了", l):
             parts = [x.strip() for x in l.split("·") if x.strip()]
@@ -91,6 +110,12 @@ def run(limit: int | None = None):
                     on_block(pg, "frame")
                     continue
                 pg.wait_for_selector("div[role='feed']", timeout=25000)
+                if LIMITED in pg.locator("body").inner_text():
+                    # 10/12 実測: ログインなしだと「表示が制限されています」＝20件まで・口コミ件数なし。数えずに休んで後で取り直す
+                    print(f"[frame] 制限表示 {q} → {COOLDOWN // 60}分休む（GMAPS_PROFILE＝ログイン済みプロファイル推奨）", flush=True)
+                    time.sleep(COOLDOWN)
+                    b.close(); b, ctx = browser(p); pg = ctx.new_page()
+                    continue
                 feed = pg.locator("div[role='feed']")
                 last = -1
                 for _ in range(8):

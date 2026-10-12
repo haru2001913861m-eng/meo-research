@@ -16,7 +16,16 @@ class Blocked(RuntimeError):
     pass
 
 
-def browser(p, headless=True):
+def browser(p, headless=True, profile: str | None = None):
+    # 10/12: ログインなし・画面なしだと Google マップが「機能を絞った表示」（口コミ5件・言語不明）になる。
+    # 調査用アカウントでログインした Chrome プロファイルを、画面ありで画面の外に置いて使うと普通の表示になる（実測）。
+    profile = profile or os.getenv("GMAPS_PROFILE")
+    if profile:
+        ctx = p.chromium.launch_persistent_context(
+            profile, channel="chrome", headless=False, viewport={"width": 1280, "height": 1000}, locale="en-US",
+            ignore_default_args=["--use-mock-keychain", "--enable-automation"],
+            args=["--window-position=-3000,-3000", "--window-size=1280,1000"])
+        return ctx, ctx   # b.close() も ctx.close() で閉じる
     kw = {"headless": headless}
     if not IN_CI:
         kw["channel"] = "chrome"   # Mac ではシステムの Chrome、CI では同梱 Chromium

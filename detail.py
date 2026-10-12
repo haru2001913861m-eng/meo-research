@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """店ごとの詳細を読む（調査A・B・D・E・Gの材料）。実行: python3 detail.py [--workers 3] [--limit N] [--industry カフェ]
 入力: data/frame.jsonl   出力: data/detail.jsonl（cid 単位で再開可）
+標本調査（13業種×10都市）: FRAME_OUT=ind_frame.jsonl DETAIL_OUT=ind_detail.jsonl DETAIL_REDO=1 DETAIL_MAX_RANK=20 python3 detail.py --workers 2
+  （DETAIL_REDO=1 で既存 detail_*.jsonl の済みを無視＝整体と接骨院のように重なる店も新業種として取り直す）
 読むもの（公開画面・ログインなし）:
   website / phone / hours_days（曜日の数）/ hours_break（休憩あり）/ special_hours（祝日の「時間変更の可能性」表示）
   photos（写真枚数）/ has_posts（最新情報）/ has_menu / unclaimed（オーナー未確認）/ editorial（紹介文）
@@ -14,6 +16,14 @@ from common import DATA, Blocked, accept_consent, append_jsonl, blocked, browser
 
 FRAME = os.path.join(DATA, os.getenv("FRAME_OUT", "frame.jsonl"))
 OUT = os.path.join(DATA, os.getenv("DETAIL_OUT", "detail.jsonl"))
+COOLDOWN = int(os.getenv("DETAIL_COOLDOWN", "1800"))   # 制限表示が出たら全員で休む秒数
+PAUSE = {"until": 0.0, "hits": 0}
+
+
+class Limited(Exception):
+    pass
+
+
 KW_ITEM = re.compile(r"美味|おいし|うま|食べ|飲|ケーキ|コーヒー|珈琲|ラーメン|麺|スープ|餃子|ビール|刺身|焼|カット|カラー|パーマ|トリートメント|施術|マッサージ|整体|矯正|メニュー|ランチ|セット|デザート|パン")
 KW_PEOPLE = re.compile(r"店員|スタッフ|店主|マスター|オーナー|先生|さんが|さんの|対応|接客|親切|丁寧|優しい|笑顔|説明")
 KW_ACCESS = re.compile(r"階段|分かりにく|わかりにく|迷|場所が|駐車|駅から|入口|入り口|看板")
@@ -102,6 +112,8 @@ def read_store(pg, href: str) -> dict:
     pg.wait_for_selector("h1", timeout=20000)
     time.sleep(1.2)
     body = pg.locator("body").inner_text()
+    if "表示が制限されています" in body or "機能を絞った" in body:   # 10/12 実測: ログインなしだと口コミ5件・タブなしの表示になる
+        raise Limited()
     rec = {"name": pg.locator("h1").first.inner_text()[:80]}
     rec["website"] = bool(re.search(r"\n[\w.-]+\.(jp|com|net|co\.jp|info|biz|shop|tokyo|me)\b", body)) or "ウェブサイト" in body
     rec["phone"] = bool(re.search(r"0\d{1,4}-\d{1,4}-\d{3,4}", body))
@@ -131,22 +143,29 @@ def read_store(pg, href: str) -> dict:
 
 def worker(rows: list[dict], wid: int) -> int:
     done = 0
+    base = os.getenv("GMAPS_PROFILE_BASE")   # 例 ~/meo-research/.gprofile_wsample → 並列ごとに _w0, _w1 を使う（ログイン済みのコピー）
+    prof = os.path.expanduser(f"{base}_w{wid}") if base else None
     with sync_playwright() as p:
-        b, ctx = browser(p)
+        b, ctx = browser(p, profile=prof)
         pg = ctx.new_page()
         try:   # 最初の1ページ目が読めない現象の対策（ウォームアップ）
             pg.goto("https://www.google.com/maps?hl=ja", wait_until="domcontentloaded", timeout=30000)
             time.sleep(2.0)
         except Exception:
             pass
-        for k, r in enumerate(rows, 1):
+        k, queue = 0, list(rows)
+        while queue:
+            r = queue[0]; k += 1
+            if time.time() < PAUSE["until"]:
+                time.sleep(PAUSE["until"] - time.time() + 5)
+                k = 0
             t0 = time.time()
-            if k % 60 == 0:   # メモリ対策: 60店ごとにブラウザを作り直す
+            if k % 60 == 0:   # メモリ対策: 60店ごとにブラウザを作り直す（休んだ後も）
                 try:
                     b.close()
                 except Exception:
                     pass
-                b, ctx = browser(p)
+                b, ctx = browser(p, profile=prof)
                 pg = ctx.new_page()
             try:
                 rec = read_store(pg, r["href"])
@@ -157,13 +176,20 @@ def worker(rows: list[dict], wid: int) -> int:
                             "list_rating": r["rating"], "list_reviews": r["reviews"], "list_category": r["category"],
                             "at": time.strftime("%Y-%m-%d %H:%M"), "sec": round(time.time() - t0, 1)})
                 append_jsonl(OUT, rec)
-                done += 1
+                done += 1; queue.pop(0)
                 print(f"[detail{wid}] {r['industry']} {r['city']} #{r['rank']} {rec['name'][:16]} rv{rec['rv_n']} {rec['sec']}s", flush=True)
             except Blocked:
                 raise SystemExit(2)
+            except Limited:
+                if time.time() >= PAUSE["until"]:
+                    PAUSE["until"] = time.time() + COOLDOWN; PAUSE["hits"] += 1
+                    print(f"[detail{wid}] 制限表示 → {COOLDOWN // 60}分休む（{PAUSE['hits']}回目・ここまで {done} 店）", flush=True)
+                continue
             except RuntimeError:
+                queue.pop(0)
                 print(f"[detail{wid}] ブロック後の再試行待ち", flush=True)
             except Exception as e:
+                queue.pop(0)
                 append_jsonl(OUT, {"cid": r["cid"], "error": str(e)[:80], "query": r["query"], "industry": r["industry"], "city": r["city"], "rank": r["rank"]})
                 print(f"[detail{wid}] 失敗 {r['name'][:16]}: {str(e)[:60]}", flush=True)
             nap()
@@ -179,14 +205,15 @@ def main():
     shard = args[args.index("--shard") + 1] if "--shard" in args else None   # 例 "2/4"
     max_reviews = int(os.getenv("DETAIL_MAX_REVIEWS", "0") or 0)             # 例 40 → 口コミ40件以下の店だけ（開業直後の候補）
     redo = os.getenv("DETAIL_REDO", "") == "1"                                # 1 → 他の detail_*.jsonl の済みを無視（自分の出力だけ再開に使う）
-    done_ids = set()
+    max_rank = int(os.getenv("DETAIL_MAX_RANK", "0") or 0)                   # 例 20 → 一覧の上位20位まで（標本調査）
+    done_ids = {r["cid"] for r in read_jsonl(OUT) if r.get("cid") and not r.get("error")}   # 自分の出力（detail で始まらない名前でも再開できる）
     for fn in os.listdir(DATA):
         if fn.startswith("detail") and fn.endswith(".jsonl"):
             if redo and fn != os.path.basename(OUT):
                 continue
             done_ids |= {r["cid"] for r in read_jsonl(os.path.join(DATA, fn)) if r.get("cid")}
     frame = [r for r in read_jsonl(FRAME) if r.get("cid") and r["cid"] not in done_ids and (not ind or r["industry"] == ind)
-             and (not max_reviews or (r.get("reviews") or 0) <= max_reviews)]
+             and (not max_reviews or (r.get("reviews") or 0) <= max_reviews) and (not max_rank or (r.get("rank") or 999) <= max_rank)]
     seen = set(); todo = []
     for r in frame:
         if r["cid"] in seen:
