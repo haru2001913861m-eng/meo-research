@@ -157,6 +157,12 @@ def main():
                     if j == 0 and c.get("pack") == "プレミアム":
                         obs["competitors"] = TOP[:3]
                 if c.get("place_url"):
+                    try:   # 月1点検の材料（公開画面の 18項目のうち見える物: サイト・電話・営業時間・写真枚数・投稿・説明・オーナー確認）
+                        from detail import read_store
+                        st = read_store(pg, c["place_url"])
+                        obs["store"] = {k: v for k, v in st.items() if k not in ("name",)}
+                    except Exception as e:
+                        obs["store_error"] = str(e)[:80]
                     r = own_reviews(pg, c["place_url"])
                     if c.get("shop") and r.get("name") and r["name"] != c["shop"]:
                         obs["name_seen"] = r["name"]   # 名前が台帳と違う → Railway 側で会長に知らせる
