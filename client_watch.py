@@ -45,6 +45,9 @@ def clients() -> list[dict]:
     return out
 
 
+TOP: list = []   # 直前の検索の上位（周辺店の比較用・プレミアム）
+
+
 def rank_of(pg, kw: str, cid: str, name: str) -> int | None:
     pg.goto("https://www.google.com/maps/search/" + kw + "?hl=ja", wait_until="domcontentloaded", timeout=40000)
     accept_consent(pg)
@@ -55,6 +58,16 @@ def rank_of(pg, kw: str, cid: str, name: str) -> int | None:
     except Exception:
         return None
     feed = pg.locator("div[role='feed']"); last = -1
+    TOP.clear()
+    try:
+        from frame import parse_card
+        items = pg.locator("div[role='feed'] a[href*='/maps/place/']")
+        for i in range(min(5, items.count())):
+            rc = parse_card(items.nth(i))
+            if not ((cid and cid == rc.get("cid")) or rc.get("name") == name):
+                TOP.append({"name": rc["name"], "rating": rc.get("rating"), "reviews": rc.get("reviews"), "rank": i + 1})
+    except Exception:
+        pass
     for _ in range(10):
         items = pg.locator("div[role='feed'] a[href*='/maps/place/']")
         for i in range(items.count()):
@@ -139,8 +152,10 @@ def main():
             t0 = time.time()
             obs = {"client_id": c["client_id"], "at": time.strftime("%Y-%m-%dT%H:%M:%S+09:00"), "ranks": [], "reviews": []}
             try:
-                for kw in c.get("keywords", []):
+                for j, kw in enumerate(c.get("keywords", [])):
                     obs["ranks"].append({"kw": kw, "rank": rank_of(pg, kw, c.get("cid", ""), c.get("shop", ""))}); nap()
+                    if j == 0 and c.get("pack") == "プレミアム":
+                        obs["competitors"] = TOP[:3]
                 if c.get("place_url"):
                     r = own_reviews(pg, c["place_url"])
                     if c.get("shop") and r.get("name") and r["name"] != c["shop"]:
