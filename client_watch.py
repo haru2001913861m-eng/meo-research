@@ -148,9 +148,11 @@ def write(c: dict, obs: dict) -> None:
 def main():
     cs = clients()
     # 会長 2026-10-12: 月曜に全店ぶんを溜めない → 契約日の曜日の店だけ（初回＝順位が無い店はすぐ）
+    # 口コミは毎日・全店（返信は7日以内に）。順位と18項目は契約日の曜日の店だけ（初回はすぐ）
     wd = time.localtime().tm_wday
-    cs = [c for c in cs if ONLY or not c.get("ranks") or c.get("rank_weekday", 0) == wd]
-    print(f"[watch] 今日の店 {len(cs)}", flush=True)
+    for c in cs:
+        c["_full"] = bool(ONLY) or not c.get("ranks") or c.get("rank_weekday", 0) == wd
+    print(f"[watch] 店 {len(cs)}（順位も読む店 {sum(1 for c in cs if c['_full'])}）", flush=True)
     with sync_playwright() as p:
         b, ctx = browser(p, profile=os.getenv("GMAPS_PROFILE"))
         pg = ctx.new_page()
@@ -158,17 +160,20 @@ def main():
             t0 = time.time()
             obs = {"client_id": c["client_id"], "at": time.strftime("%Y-%m-%dT%H:%M:%S+09:00"), "ranks": [], "reviews": []}
             try:
-                for j, kw in enumerate(c.get("keywords", [])):
+                for j, kw in enumerate(c.get("keywords", []) if c.get("_full") else []):
                     obs["ranks"].append({"kw": kw, "rank": rank_of(pg, kw, c.get("cid", ""), c.get("shop", ""))}); nap()
                     if j == 0 and c.get("pack") == "プレミアム":
                         obs["competitors"] = TOP[:3]
                 if c.get("place_url"):
                     try:   # 月1点検の材料（公開画面の 18項目のうち見える物: サイト・電話・営業時間・写真枚数・投稿・説明・オーナー確認）
+                        if not c.get("_full"):
+                            raise RuntimeError("今日は口コミだけ")
                         from detail import read_store
                         st = read_store(pg, c["place_url"])
                         obs["store"] = {k: v for k, v in st.items() if k not in ("name",)}
                     except Exception as e:
-                        obs["store_error"] = str(e)[:80]
+                        if "口コミだけ" not in str(e):
+                            obs["store_error"] = str(e)[:80]
                     r = own_reviews(pg, c["place_url"])
                     if c.get("shop") and r.get("name") and r["name"] != c["shop"]:
                         obs["name_seen"] = r["name"]   # 名前が台帳と違う → Railway 側で会長に知らせる
