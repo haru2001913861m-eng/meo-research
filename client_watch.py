@@ -124,13 +124,16 @@ def own_reviews(pg, href: str) -> dict:
         lines = [l for l in t.split("\n") if l.strip()]
         author = (c.get_attribute("aria-label") or (lines[0] if lines else ""))[:40]
         body = t.split("オーナーからの返信")[0]
+        owner_reply = ""
+        if "オーナーからの返信" in t:
+            owner_reply = re.sub(r"\d+\s*(?:分|時間|日|週間|か月|カ月|ヶ月|年)前|昨日|今日", "", t.split("オーナーからの返信", 1)[1]).strip()[:300]
         md = re.search(r"(\d+\s*(?:分|時間|日|週間|か月|カ月|ヶ月|年)前|昨日|今日)", body)
         text = body.split(md.group(1), 1)[1] if md else body
         days = (0 if re.search(r"分|時間|今日", md.group(1)) else rel_days(md.group(1))) if md else None
         text = re.split(r"食事の種類|食事:|1 人あたりの料金|おすすめの料理|Meal type", text)[0]
         text = re.sub(r"(もっと見る|いいね|共有|新規|ローカルガイド.*)", "", text).strip()[:600]
         out["reviews"].append({"key": rid, "author": author, "rating": rating, "text": text,
-                               "days": days, "has_reply": "オーナーからの返信" in t})
+                               "days": days, "has_reply": "オーナーからの返信" in t, "owner_reply": owner_reply})
         if len(out["reviews"]) >= 20:
             break
     return out
@@ -144,7 +147,10 @@ def write(c: dict, obs: dict) -> None:
 
 def main():
     cs = clients()
-    print(f"[watch] 店 {len(cs)}", flush=True)
+    # 会長 2026-10-12: 月曜に全店ぶんを溜めない → 契約日の曜日の店だけ（初回＝順位が無い店はすぐ）
+    wd = time.localtime().tm_wday
+    cs = [c for c in cs if ONLY or not c.get("ranks") or c.get("rank_weekday", 0) == wd]
+    print(f"[watch] 今日の店 {len(cs)}", flush=True)
     with sync_playwright() as p:
         b, ctx = browser(p, profile=os.getenv("GMAPS_PROFILE"))
         pg = ctx.new_page()
