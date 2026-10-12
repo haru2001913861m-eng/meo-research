@@ -87,6 +87,9 @@ def own_reviews(pg, href: str) -> dict:
     accept_consent(pg)
     pg.wait_for_selector("h1", timeout=20000); time.sleep(1.2)
     out = {"name": pg.locator("h1").first.inner_text()[:80], "reviews": []}
+    m = re.search(r"!19s(ChIJ[\w-]+)", pg.url)   # 口コミ用 QR（writereview?placeid=）に要る place_id（2026-10-12）
+    if m:
+        out["place_id"] = m.group(1)
     m = re.search(r"(\d\.\d)\s*\n?\s*\(?([\d,]+)\)?", pg.locator("body").inner_text()[:3000])
     if m:
         out["rating"] = float(m.group(1)); out["review_count"] = int(m.group(2).replace(",", ""))
