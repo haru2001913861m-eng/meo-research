@@ -205,7 +205,12 @@ def main():
             for city, ind in todo:
                 t0 = time.time()
                 try:
-                    n = run_query(pg, city, ind, have)
+                    try:
+                        n = run_query(pg, city, ind, have)
+                    except Exception as e1:          # 一覧の読み込みの時間切れは、1分おいて1回だけやり直す（10/14 は18検索中3回）
+                        print(f"[HARVEST][RETRY] {ind} {city}: {str(e1)[:60]}", flush=True)
+                        time.sleep(60)
+                        n = run_query(pg, city, ind, have)
                     fails = 0
                 except Exception as e:
                     fails += 1
