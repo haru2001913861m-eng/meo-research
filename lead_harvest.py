@@ -96,8 +96,12 @@ def enrich_site(url: str) -> dict:
                 found[m] = u
         if u == url:
             for href, text in re.findall(r"<a[^>]+href=[\"']([^\"'#]+)[\"'][^>]*>(.*?)</a>", html, re.S | re.I):
-                full = urljoin(u, href)
-                if urlparse(full).netloc == host and CONTACT.search(href + " " + re.sub("<[^>]+>", "", text)) \
+                try:
+                    full = urljoin(u, href)
+                    same = urlparse(full).netloc == host
+                except Exception:
+                    continue
+                if same and CONTACT.search(href + " " + re.sub("<[^>]+>", "", text)) \
                         and full not in queue and full not in seen:
                     queue.append(full)
         time.sleep(0.8)
@@ -158,6 +162,14 @@ def place(pg, href: str) -> dict:
     return {"website": web, "phone": phone, "address": addr, "closed": closed}
 
 
+def fresh_page(ctx, pg):
+    try:
+        pg.close()
+    except Exception:
+        pass
+    return ctx.new_page()
+
+
 def run_query(pg, city: str, ind: str, have: set) -> int:
     q = f"{ind} {city}"
     shops = list_shops(pg, q)
@@ -177,7 +189,11 @@ def run_query(pg, city: str, ind: str, have: set) -> int:
         soc = social_from_url(p.get("website", ""))
         rec.update(soc, emails=[], email_pages=[], no_sales=False)
         if p.get("website") and not (soc["instagram"] or soc["facebook"]):
-            e = enrich_site(p["website"])
+            try:
+                e = enrich_site(p["website"])
+            except Exception as ex:          # おかしなリンク（「＃」など）でも、その店だけ飛ばして検索は続ける
+                e = {"instagram": "", "facebook": "", "emails": [], "email_pages": [], "no_sales": False}
+                rec["err_site"] = str(ex)[:60]
             rec["instagram"] = rec["instagram"] or e["instagram"]
             rec["facebook"] = rec["facebook"] or e["facebook"]
             rec.update(emails=e["emails"], email_pages=e["email_pages"], no_sales=e["no_sales"])
@@ -210,6 +226,7 @@ def main():
                     except Exception as e1:          # 一覧の読み込みの時間切れは、1分おいて1回だけやり直す（10/14 は18検索中3回）
                         print(f"[HARVEST][RETRY] {ind} {city}: {str(e1)[:60]}", flush=True)
                         time.sleep(60)
+                        pg = fresh_page(ctx, pg)     # 「Page crashed」の後は同じページが使えない（10/15 夜に5連続で止まった）
                         n = run_query(pg, city, ind, have)
                     fails = 0
                 except Exception as e:
@@ -218,7 +235,9 @@ def main():
                     if fails >= 5:
                         print("[HARVEST] 5回続けて失敗。30分休んで終了（launchd が再起動）", flush=True)
                         time.sleep(1800); return
-                    time.sleep(60); continue
+                    time.sleep(60)
+                    pg = fresh_page(ctx, pg)
+                    continue
                 done[f"{ind}|{city}"] = time.strftime("%Y-%m-%d %H:%M")
                 json.dump(done, open(DONE, "w", encoding="utf-8"), ensure_ascii=False)
                 print(f"[HARVEST] {ind} {city}: +{n}（{int(time.time() - t0)}秒・計 {len(have)}）", flush=True)
