@@ -232,6 +232,8 @@ def main():
                 except Exception as e:
                     fails += 1
                     print(f"[HARVEST][ERR] {ind} {city}: {str(e)[:100]}", flush=True)
+                    done[f"{ind}|{city}"] = "失敗 " + time.strftime("%Y-%m-%d %H:%M")   # 再起動のたびに同じ検索で詰まらない（次の一巡でやり直す）
+                    json.dump(done, open(DONE, "w", encoding="utf-8"), ensure_ascii=False)
                     if fails >= 5:
                         print("[HARVEST] 5回続けて失敗。30分休んで終了（launchd が再起動）", flush=True)
                         time.sleep(1800); return
