@@ -1,2 +1,10 @@
 data/*.log
 __pycache__/
+.gprofile/
+data/google_state.json
+.gprofile_w*/
+logs/
+.gprofile_rank/
+data/notice_targets.*
+.gprofile_harvest/
+data/leads/
