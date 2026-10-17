@@ -46,6 +46,7 @@ def clients() -> list[dict]:
 
 
 TOP: list = []   # 直前の検索の上位（周辺店の比較用・プレミアム）
+EN_STATS: dict = {}   # 直前の英語の検索で、英字の店名の店が何店か（英字の店名の助言に使う・2026-10-17）
 
 
 def rank_of(pg, kw: str, cid: str, name: str, lang: str = "ja") -> int | None:
@@ -69,18 +70,31 @@ def rank_of(pg, kw: str, cid: str, name: str, lang: str = "ja") -> int | None:
                 TOP.append({"name": rc["name"], "rating": rc.get("rating"), "reviews": rc.get("reviews"), "rank": i + 1})
     except Exception:
         pass
+    found = None
     for _ in range(10):
         items = pg.locator("div[role='feed'] a[href*='/maps/place/']")
         for i in range(items.count()):
             href = items.nth(i).get_attribute("href") or ""
             al = (items.nth(i).get_attribute("aria-label") or "").strip()
-            if (cid and cid in href) or (not cid and name and al == name):
-                return i + 1
+            if lang == "en" and i < 60:
+                EN_STATS.setdefault("names", {})[i] = bool(re.search(r"[A-Za-z]{3,}", al))
+            if found is None and ((cid and cid in href) or (not cid and name and al == name)):
+                found = i + 1
+                if lang != "en":
+                    return found
+        if found and items.count() >= 10:
+            return found
         if items.count() >= MAX_RANK or items.count() == last:
             break
         last = items.count()
         feed.evaluate("el => el.scrollBy(0, 5000)"); time.sleep(1.1)
-    return None
+    return found
+
+
+def en_stats() -> dict:
+    nm = EN_STATS.get("names") or {}
+    top = [v for i, v in sorted(nm.items()) if i < 10]
+    return {"top10_n": len(top), "top10_latin": sum(top), "n": len(nm), "latin": sum(nm.values())} if top else {}
 
 
 def own_reviews(pg, href: str) -> dict:
@@ -184,9 +198,12 @@ def main():
                         obs["en_profile"] = {"name_en": shop.get("name_en"), "city_en": shop.get("city_en"), "address_en": shop.get("address_en")}
                     nap()
                 for j, kw in enumerate(c.get("keywords_en", []) if c.get("_full") else []):
+                    EN_STATS.clear()
                     obs.setdefault("ranks_en", []).append({"kw": kw, "rank": rank_of(pg, kw, c.get("cid", ""), "", "en")}); nap()
-                    if j == 0 and c.get("pack") == "プレミアム":
-                        obs["competitors_en"] = TOP[:3]
+                    if j == 0:
+                        obs["en_stats"] = en_stats()
+                        if c.get("pack") == "プレミアム":
+                            obs["competitors_en"] = TOP[:3]
                 job = c.get("ai_job") or {}
                 if job and job.get("due", "9999") <= time.strftime("%Y-%m-%d") and job.get("area"):
                     import ai_ask

@@ -79,10 +79,12 @@ def check(text: str, industry_hint: str = "", langs=("ja", "en"), runs: int = 1,
     pos = lambda lst: next((r["rank"] for r in lst if r.get("cid") == shop["cid"]), None)
     me_ja = next((r for r in r_ja if r.get("cid") == shop["cid"]), {})
     top10 = [r["reviews"] for r in r_en[:10] if r.get("reviews")]
+    latin10 = sum(1 for r in r_en[:10] if r.get("latin_name"))
     out = {"ok": True, **shop, **ja, "industry": ind, "town": town, "ja_query": ja_q, "en_query": en_q,
            "rank_ja": pos(r_ja), "rank_en": pos(r_en), "n_ja": len(r_ja), "n_en": len(r_en),
            "reviews": me_ja.get("reviews"), "rating": me_ja.get("rating"),
-           "en_top10_reviews_median": sorted(top10)[len(top10) // 2] if top10 else None, "at": time.strftime("%Y-%m-%d %H:%M")}
+           "en_top10_reviews_median": sorted(top10)[len(top10) // 2] if top10 else None, "en_top10_latin": latin10, "en_top10_n": min(10, len(r_en)),
+           "at": time.strftime("%Y-%m-%d %H:%M")}
     out["ai"] = ai_ask.check(ja["name_ja"], shop.get("name_en", ""), town, shop.get("city_en", ""), ind, langs, runs, who)
     return out
 
@@ -103,7 +105,7 @@ def message(r: dict, label: str) -> str:
          f"・日本語「{r['ja_query']}」：{_where(r['rank_ja'], r['n_ja'])}",
          f"・英語「{r['en_query']}」：{_where(r['rank_en'], r['n_en'])}"]
     if r.get("name_en") and not re.search(r"[A-Za-z]{3,}", r["name_en"]):
-        L.append("・英語の画面で、店名が英字になっていません（旅行者が読めない名前で並んでいます）")
+        L.append(f"・英語の画面で、店名が英字で出ていません。この街の英語の上位10では{r.get('en_top10_latin', 0)}店が英字です（店名は Google が決めるので、サイト・SNS・予約サイトの英字のつづりをそろえて拾ってもらいます）")
     if r["rank_ja"] and r["rank_ja"] <= 20 and (not r["rank_en"] or r["rank_en"] > 10):
         L.append("・日本語では見つけてもらえているのに、英語で探す旅行者の画面には届いていません。日本語で上位10の店の約半分が、英語では上位10から消えていました（観光地688軒中335軒）")
     if r.get("en_top10_reviews_median"):
