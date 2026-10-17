@@ -48,8 +48,8 @@ def clients() -> list[dict]:
 TOP: list = []   # 直前の検索の上位（周辺店の比較用・プレミアム）
 
 
-def rank_of(pg, kw: str, cid: str, name: str) -> int | None:
-    pg.goto("https://www.google.com/maps/search/" + kw + "?hl=ja", wait_until="domcontentloaded", timeout=40000)
+def rank_of(pg, kw: str, cid: str, name: str, lang: str = "ja") -> int | None:
+    pg.goto("https://www.google.com/maps/search/" + kw + f"?hl={lang}", wait_until="domcontentloaded", timeout=40000)
     accept_consent(pg)
     if blocked(pg):
         on_block(pg, "watch"); return None
@@ -61,9 +61,10 @@ def rank_of(pg, kw: str, cid: str, name: str) -> int | None:
     TOP.clear()
     try:
         from frame import parse_card
+        from frame_inbound import parse_card as parse_card_l
         items = pg.locator("div[role='feed'] a[href*='/maps/place/']")
         for i in range(min(5, items.count())):
-            rc = parse_card(items.nth(i))
+            rc = parse_card(items.nth(i)) if lang == "ja" else parse_card_l(items.nth(i), lang)
             if not ((cid and cid == rc.get("cid")) or rc.get("name") == name):
                 TOP.append({"name": rc["name"], "rating": rc.get("rating"), "reviews": rc.get("reviews"), "rank": i + 1})
     except Exception:
@@ -124,6 +125,13 @@ def own_reviews(pg, href: str) -> dict:
         if star.count():
             m = re.search(r"(\d)", star.first.get_attribute("aria-label") or "")
             rating = int(m.group(1)) if m else None
+        translated = bool(re.search(r"Google による翻訳|（翻訳）|原文を表示|原文を見る", t))
+        if translated:   # 外国語の口コミ（日本語の画面では訳が出る）→ 原文を開いて読む（返信の言葉を決めるため・2026-10-17）
+            try:
+                c.locator("button", has_text=re.compile("原文")).first.click(timeout=1500); time.sleep(0.4)
+                t = c.inner_text()
+            except Exception:
+                pass
         lines = [l for l in t.split("\n") if l.strip()]
         author = (c.get_attribute("aria-label") or (lines[0] if lines else ""))[:40]
         body = t.split("オーナーからの返信")[0]
@@ -134,9 +142,10 @@ def own_reviews(pg, href: str) -> dict:
         text = body.split(md.group(1), 1)[1] if md else body
         days = (0 if re.search(r"分|時間|今日", md.group(1)) else rel_days(md.group(1))) if md else None
         text = re.split(r"食事の種類|食事:|1 人あたりの料金|おすすめの料理|Meal type", text)[0]
-        text = re.sub(r"(もっと見る|いいね|共有|新規|ローカルガイド.*)", "", text).strip()[:600]
+        text = re.sub(r"(もっと見る|いいね|共有|新規|ローカルガイド.*|Google による翻訳|原文を表示|翻訳を表示|（翻訳）.*)", "", text).strip()[:600]
         out["reviews"].append({"key": rid, "author": author, "rating": rating, "text": text,
-                               "days": days, "has_reply": "オーナーからの返信" in t, "owner_reply": owner_reply})
+                               "days": days, "has_reply": "オーナーからの返信" in t, "owner_reply": owner_reply,
+                               **({"lang": "foreign"} if translated else {})})
         if len(out["reviews"]) >= 20:
             break
     return out
@@ -167,6 +176,24 @@ def main():
                     obs["ranks"].append({"kw": kw, "rank": rank_of(pg, kw, c.get("cid", ""), c.get("shop", ""))}); nap()
                     if j == 0 and c.get("pack") == "プレミアム":
                         obs["competitors"] = TOP[:3]
+                # 英語の地図（スタンダード以上・台帳の keywords_en / need_en_profile は Railway の meo_screens が置く）
+                if c.get("need_en_profile") and c.get("place_url"):
+                    import en_rank
+                    shop = en_rank.find_shop(pg, c["place_url"])
+                    if shop.get("cid"):
+                        obs["en_profile"] = {"name_en": shop.get("name_en"), "city_en": shop.get("city_en"), "address_en": shop.get("address_en")}
+                    nap()
+                for j, kw in enumerate(c.get("keywords_en", []) if c.get("_full") else []):
+                    obs.setdefault("ranks_en", []).append({"kw": kw, "rank": rank_of(pg, kw, c.get("cid", ""), "", "en")}); nap()
+                    if j == 0 and c.get("pack") == "プレミアム":
+                        obs["competitors_en"] = TOP[:3]
+                job = c.get("ai_job") or {}
+                if job and job.get("due", "9999") <= time.strftime("%Y-%m-%d") and job.get("area"):
+                    import ai_ask
+                    a = ai_ask.check(c.get("shop", ""), (c.get("en") or {}).get("name_en") or (c.get("en") or {}).get("name_en_sheet", ""),
+                                     job["area"], job.get("city_en", ""), job.get("industry", ""), tuple(job["langs"]), int(job.get("runs", 3)), who=c["client_id"][:10])
+                    obs["ai"] = ({k: v for k, v in a.items() if k != "answers"} if a.get("ok")
+                                 else {"at": time.strftime("%Y-%m-%dT%H:%M:%S+09:00"), "error": a.get("why", "?")})
                 if c.get("place_url"):
                     try:   # 月1点検の材料（公開画面の 18項目のうち見える物: サイト・電話・営業時間・写真枚数・投稿・説明・オーナー確認）
                         if not c.get("_full"):
