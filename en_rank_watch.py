@@ -109,5 +109,21 @@ def main():
         time.sleep(3)
 
 
+def weekly_neta() -> None:
+    """月曜に1回: 無料点検で ChatGPT に聞いた先週の結果をネタ帳と Notion へ（free_check_neta.py・会長 2026-10-17）。"""
+    wk = datetime.now().strftime("%G-W%V")
+    mark = os.path.join(HERE, "data", "free_check_neta_week.txt")
+    if datetime.now().weekday() != 0 or (os.path.exists(mark) and open(mark).read().strip() == wk):
+        return
+    try:
+        import free_check_neta
+        free_check_neta.write(import_=not DRY)
+        if not DRY:
+            open(mark, "w").write(wk)
+    except Exception as e:
+        print(f"[en_rank_watch] 無料点検のネタの書き出しに失敗: {e}")
+
+
 if __name__ == "__main__":
     main()
+    weekly_neta()
