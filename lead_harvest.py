@@ -9,6 +9,7 @@ Googleマップの一覧（60位まで）→ 店のページで公式サイト�
       data/leads/queries_done.json（済んだ 業種×市区）
 送らない。DM は dm_daily.py が1日30件を選び、会長の LINE にコピペできる形で届ける。メールは Railway の営業メール（outreach_auto）が別に送る。
 実行: launchd com.hitotsunagi.lead-harvest（KeepAlive・ログインした Chrome プロファイル .gprofile_harvest）
+      宿だけ: python3 lead_harvest.py --ota（config.DM_OTA_INDUSTRIES × DM_OTA_CITIES・済みは queries_done_ota.json・一巡で終わる）
 """
 from __future__ import annotations
 import json, os, re, sys, time
@@ -38,7 +39,14 @@ FB_BAD = {"sharer", "sharer.php", "plugins", "tr", "dialog", "share", "share.php
 CONTACT = re.compile(r"(contact|inquiry|toiawase|otoiawase|access|company|about|shop|info|問い合わせ|問合せ|会社概要|店舗情報|アクセス)", re.I)
 
 
+OTA = "--ota" in sys.argv   # 宿（OTA で集客している業種）だけを観光地で集める（会長 2026-10-17・DM の冒頭を OTA の手数料に）
+if OTA:
+    DONE = f"{DIR}/queries_done_ota.json"
+
+
 def queries() -> list[tuple[str, str]]:
+    if OTA:
+        return [(c, ind) for c in config.DM_OTA_CITIES for ind in config.DM_OTA_INDUSTRIES]
     return [(c, ind) for c in config.OUTREACH_CITIES for ind in config.OUTREACH_INDUSTRIES]   # 市区ごとに全業種（DM の業種が偏らない）
 
 
@@ -210,6 +218,8 @@ def main():
     done = load_json(DONE, {})
     have = known_cids()
     todo = [qc for qc in queries() if f"{qc[1]}|{qc[0]}" not in done]
+    if not todo and OTA:
+        print("[HARVEST] 宿の検索は一巡しました", flush=True); return
     if not todo:                      # 一巡したら、古い順にやり直す（店は入れ替わる）
         done = {}; todo = queries()
     print(f"[HARVEST] 残り {len(todo)} 検索・既知 {len(have)} 店", flush=True)
