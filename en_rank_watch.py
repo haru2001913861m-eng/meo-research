@@ -22,6 +22,8 @@ DRY = "--dry" in sys.argv
 DONE = os.path.join(HERE, "data", "en_rank_done.json")
 LOG = os.path.join(HERE, "data", "en_rank_log.jsonl")
 LOCK = os.path.join(HERE, "data", "en_rank_watch.lock")
+TRIES = os.path.join(HERE, "data", "en_rank_tries.json")   # 送れなかった回数（依頼ごと）。MAX_TRIES で止めて会長へ（2026-10-23: 鍵が無く41回やり直し続けた）
+MAX_TRIES = 3
 
 
 def pending() -> list[tuple[str, dict]]:
@@ -83,8 +85,13 @@ def main():
     except OSError:
         print("[en_rank_watch] 前の回がまだ動いている"); return
     done = set(json.load(open(DONE))) if os.path.exists(DONE) else set()
-    todo = [(u, q) for u, q in pending() if f"{u}|{q.get('id')}" not in done]
+    tries = json.load(open(TRIES)) if os.path.exists(TRIES) else {}
+    todo = [(u, q) for u, q in pending() if f"{u}|{q.get('id')}" not in done and tries.get(f"{u}|{q.get('id')}", 0) < MAX_TRIES]
     print(f"[en_rank_watch] {datetime.now():%m-%d %H:%M} 依頼 {len(todo)} 件", flush=True)
+    if todo and not DRY and not config.MEO_LINE_CHANNEL_ACCESS_TOKEN:   # 送れないのに Chrome で調べ直さない
+        notify_ceo_once("【MEO 要対応】英語の順位・無料点検の依頼を店に返せません（Mac の .env に MEO_LINE_CHANNEL_ACCESS_TOKEN が無い）。"
+                        f"依頼 {len(todo)} 件は待たせています")
+        return
     for uid, q in todo:
         if q.get("kind") == "screens":
             import screens
@@ -106,6 +113,11 @@ def main():
             f.write(json.dumps({"uid": uid[:10], "req": q, "res": r, "sent": ok}, ensure_ascii=False) + "\n")
         if ok and not DRY:
             done.add(f"{uid}|{q.get('id')}"); json.dump(sorted(done), open(DONE, "w"))
+        elif not DRY:   # 送れなかった: 回数を数え、MAX_TRIES で止めて会長へ（同じ依頼で Chrome を回し続けない）
+            k = f"{uid}|{q.get('id')}"
+            tries[k] = tries.get(k, 0) + 1; json.dump(tries, open(TRIES, "w"))
+            if tries[k] >= MAX_TRIES:
+                notify_ceo_once(f"【MEO 要対応】「{q.get('shop') or q.get('text', '')[:20]}」の依頼を{MAX_TRIES}回返せず止めました（LINE の送信に失敗）。鍵か宛先を確認してください")
         time.sleep(3)
 
 
