@@ -494,14 +494,27 @@ B_TOP = "日本語の全国調査 14,504店を同じ都市×業種の中で数�
 SRC_TOP = OB + "ToB発信ネタ帳_MEO.md N349〜N357（自社調査 14,504店・2026-10-12 再集計・集計の台本なし）"
 L_JP_FIXED = "全国14,504店の調査"
 B_RANK = "日本語の全国調査 14,491店（詳細を見られた店）を一覧の位置で分けた集計（1〜10位 3,390店・21位以下 7,712店・2026-10-24）"
-L_RANK = "全国14,491店の調査"
+L_RANK = "全国14,504店の調査"   # 外に出る文の店数は14,504に揃える（会長 2026-10-27「8を直して」・1つの文に2つの店数を出さない）
 SRC_RANK = "meo-research/data/detail_*.jsonl を rank で分けて中央値（numbers_build.py FIXED jp.rank.*・2026-10-24）"
+B_CNT = "日本語の全国調査 14,491店（詳細を見られた店）を一覧の星（list_rating）×口コミの数（list_reviews）で分けた集計（2026-10-25）"
+SRC_CNT = "meo-research/data/detail_*.jsonl を list_rating と list_reviews で分けて rank の中央値と上位10の割合（numbers_build.py FIXED jp.cnt.*・2026-10-25）"
 FIXED: dict[str, dict] = {
     # 10/24 一覧の位置（rank）で分けた状態（VIP の DM の1行・半年の約束の「上位10店の状態」が読む）
     "jp.rank.top10_photos": {"value": "155枚", "num": 155, "unit": "枚", "base": B_RANK, "label": L_RANK, "source": SRC_RANK + "（1〜10位の写真の枚数の中央値）", "at": "2026-10-24"},
     "jp.rank.low_photos": {"value": "95枚", "num": 95, "unit": "枚", "base": B_RANK, "label": L_RANK, "source": SRC_RANK + "（21位以下の写真の枚数の中央値）", "at": "2026-10-24"},
     "jp.rank.top10_reply": {"value": "50%", "num": 50, "unit": "%", "base": B_RANK, "label": L_RANK, "source": SRC_RANK + "（1〜10位の口コミ返信率の中央値）", "at": "2026-10-24"},
     "jp.rank.low_reply": {"value": "17%", "num": 17, "unit": "%", "base": B_RANK, "label": L_RANK, "source": SRC_RANK + "（21位以下の口コミ返信率の中央値）", "at": "2026-10-24"},
+    # 10/25 星の高さ×口コミの数で分けた一覧の位置（会長 2026-10-24「悪い口コミを強みに」・Threads B・営業メール B・LP が読む）
+    "jp.cnt.lo_many_pos": {"value": "31位", "num": 31, "unit": "位", "base": B_CNT, "label": L_RANK, "source": SRC_CNT + "（星4.0未満・口コミ300件以上 533店の位置の中央値）", "at": "2026-10-25"},
+    "jp.cnt.lo_many_top10": {"value": "12%", "num": 12, "unit": "%", "base": B_CNT, "label": L_RANK, "source": SRC_CNT + "（星4.0未満・口コミ300件以上 533店のうち上位10に入る割合）", "at": "2026-10-25"},
+    "jp.cnt.hi_few_pos": {"value": "33位", "num": 33, "unit": "位", "base": B_CNT, "label": L_RANK, "source": SRC_CNT + "（星4.5以上・口コミ30件未満 2,666店の位置の中央値）", "at": "2026-10-25"},
+    "jp.cnt.hi_few_top10": {"value": "12%", "num": 12, "unit": "%", "base": B_CNT, "label": L_RANK, "source": SRC_CNT + "（星4.5以上・口コミ30件未満 2,666店のうち上位10に入る割合）", "at": "2026-10-25"},
+    "jp.cnt.hi_many_pos": {"value": "9位", "num": 9, "unit": "位", "base": B_CNT, "label": L_RANK, "source": SRC_CNT + "（星4.5以上・口コミ300件以上 968店の位置の中央値）", "at": "2026-10-25"},
+    "jp.cnt.hi_many_top10": {"value": "54%", "num": 54, "unit": "%", "base": B_CNT, "label": L_RANK, "source": SRC_CNT + "（星4.5以上・口コミ300件以上 968店のうち上位10に入る割合）", "at": "2026-10-25"},
+    "jp.cnt.mid_few_pos": {"value": "39位", "num": 39, "unit": "位", "base": B_CNT, "label": L_RANK, "source": SRC_CNT + "（星4.0〜4.5・口コミ30件未満 563店の位置の中央値）", "at": "2026-10-25"},
+    "jp.cnt.mid_many_pos": {"value": "16位", "num": 16, "unit": "位", "base": B_CNT, "label": L_RANK, "source": SRC_CNT + "（星4.0〜4.5・口コミ300件以上 1,582店の位置の中央値）", "at": "2026-10-25"},
+    "jp.cnt.mid_few_top10": {"value": "6%", "num": 6, "unit": "%", "base": B_CNT, "label": L_RANK, "source": SRC_CNT + "（星4.0〜4.5・口コミ30件未満 563店のうち上位10に入る割合）", "at": "2026-10-25"},
+    "jp.cnt.mid_many_top10": {"value": "35%", "num": 35, "unit": "%", "base": B_CNT, "label": L_RANK, "source": SRC_CNT + "（星4.0〜4.5・口コミ300件以上 1,582店のうち上位10に入る割合）", "at": "2026-10-25"},
     # 10/10 個人店13,804店
     "jp.indie": {"value": "13,804", "num": 13804, "unit": "店", "base": B_INDIE, "label": "個人店13,804店", "source": SRC_INDIE, "at": "2026-10-10", "pattern": r"{v}店"},
     "jp.grow.post_fast": {"value": "53%", "num": 53, "unit": "%", "base": B_INDIE + "のうち月3件以上の1,897店・月1件未満の9,135店",
