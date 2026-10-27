@@ -16,11 +16,17 @@ Q = os.path.expanduser("~/sales-automation/data/aio_queries.json")
 OUT = os.path.join(HERE, "data", "aio_baseline.jsonl")
 MD = os.path.join(HERE, "data", "aio_baseline.md")
 MODEL = "gpt-5-mini"
+SECTION = os.getenv("AIO_SECTION", "")   # inbound ＝ インバウンドの問い（2026-10-27）
+if SECTION:
+    OUT = OUT.replace("aio_baseline", f"aio_baseline_{SECTION}")
+    MD = MD.replace("aio_baseline", f"aio_baseline_{SECTION}")
 OURS = ("hitotsunagi", "ひとつなぎ", "皆川")
 
 
 def pick(seed: int = 7) -> list[tuple[str, str, str]]:
     d = json.load(open(Q, encoding="utf-8"))
+    if SECTION:
+        d = d[SECTION]
     out = [("共通", p["who"], q) for p in d["generic"] for q in p["q"]]
     rnd = random.Random(seed)
     for ind, ps in d["industries"].items():
