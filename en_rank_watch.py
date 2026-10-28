@@ -24,6 +24,7 @@ LOG = os.path.join(HERE, "data", "en_rank_log.jsonl")
 LOCK = os.path.join(HERE, "data", "en_rank_watch.lock")
 TRIES = os.path.join(HERE, "data", "en_rank_tries.json")   # 送れなかった回数（依頼ごと）。MAX_TRIES で止めて会長へ（2026-10-23: 鍵が無く41回やり直し続けた）
 MAX_TRIES = 3
+LOGIN_NEEDED = os.path.join(HERE, "data", "line_login_needed")   # 読み取り用 Chrome のログイン切れの印。line_login.py が消すまで実物を開かない（2026-10-26: 2分ごとに溝井歯科医院の画面が会長の画面に出続けた）
 
 
 def pending() -> list[tuple[str, dict]]:
@@ -42,6 +43,12 @@ def pending() -> list[tuple[str, dict]]:
                 s = json.loads(raw)
             except Exception:
                 continue
+            quiet = s.get("hold") or s.get("blocked")   # hold＝会長が「何も送らない」と決めた人（2026-10-26 溝井歯科医院）
+            q = s.get("detail_req") or {}   # 実物の読み取り（説明文・最新の口コミ・返事・オーナー確認）・2026-10-26。送るかは本番が決める（hold の人には送らない）
+            if q.get("status") == "pending" and q.get("place_id"):
+                out.append((uid, {**q, "kind": "detail"}))
+            if quiet:   # ここから下は Mac が店に直接送る依頼
+                continue
             q = s.get("en_req") or {}
             if q.get("status") == "pending" and q.get("text"):
                 out.append((uid, q))
@@ -51,6 +58,23 @@ def pending() -> list[tuple[str, dict]]:
         if not res.get("has_more"):
             return out
         cursor = res["next_cursor"]
+
+
+def detail_one(uid: str, q: dict) -> tuple[dict, bool]:
+    """実物を読み（line_detail.measure）、本番の /meo/detail-result に渡す。本番が店に送る。(結果, 済んだか)"""
+    import hashlib, hmac
+    import line_detail
+    m = line_detail.measure(q["place_id"], q.get("shop") or "")
+    if not m.get("ok"):
+        return {"ok": False, "why": m.get("why")}, False
+    body = json.dumps({"user_id": uid, "id": q["id"], "obs": m["obs"], "limited": m.get("limited")}, ensure_ascii=False).encode("utf-8")
+    if DRY:
+        print(body.decode()); return {**m, "result": "dry"}, True
+    sig = hmac.new(config.MEO_LINE_CHANNEL_ACCESS_TOKEN.encode(), body, hashlib.sha256).hexdigest()
+    r = requests.post(config.PUBLIC_BASE_URL.rstrip("/") + "/meo/detail-result", data=body, timeout=30,
+                      headers={"Content-Type": "application/json", "X-Hito-Sig": sig})
+    res = (r.json() or {}).get("result") if r.ok else f"http {r.status_code}"
+    return {**m, "result": res}, res in ("sent", "quiet", "skip", "fail")
 
 
 def push(uid: str, text: str) -> bool:
@@ -92,7 +116,23 @@ def main():
         notify_ceo_once("【MEO 要対応】英語の順位・無料点検の依頼を店に返せません（Mac の .env に MEO_LINE_CHANNEL_ACCESS_TOKEN が無い）。"
                         f"依頼 {len(todo)} 件は待たせています")
         return
+    limited_seen = os.path.exists(LOGIN_NEEDED)   # ログイン切れの間は、どの店でも Chrome を開かない
     for uid, q in todo:
+        if q.get("kind") == "detail":
+            if limited_seen:
+                continue
+            r, ok = detail_one(uid, q)
+            limited_seen = bool(r.get("limited") and r.get("result") == "limited")
+            with open(LOG, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"uid": uid[:10], "req": q, "res": r, "sent": ok}, ensure_ascii=False) + "\n")
+            if limited_seen:
+                open(LOGIN_NEEDED, "w").write(datetime.now().isoformat())
+                notify_ceo_once("【MEO 要対応】Googleマップの実物を読む Chrome のログインが切れています。"
+                                "店の口コミの日付と返事を数えられないため、点検の続きを店に送れていません。"
+                                "Mac で python3 ~/meo-research/line_login.py を実行し、hitotsunagi861 でログインしてください")
+            if ok and not DRY:
+                done.add(f"{uid}|{q.get('id')}"); json.dump(sorted(done), open(DONE, "w"))
+            continue
         if q.get("kind") == "screens":
             import screens
             try:

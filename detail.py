@@ -30,7 +30,7 @@ KW_ACCESS = re.compile(r"階段|分かりにく|わかりにく|迷|場所が|�
 
 
 def read_reviews(pg) -> dict:
-    out = {"rv_n": 0, "rv_days": [], "rv_replies": 0, "rv_reply_lag": [], "rv_localguide": 0,
+    out = {"rv_n": 0, "rv_sorted": False, "rv_days": [], "rv_replies": 0, "rv_reply_lag": [], "rv_localguide": 0,
            "rv_item": 0, "rv_people": 0, "rv_access": 0, "rv_reply_len": [], "rv_reply_dup": 0}
     tab = pg.locator("button[role='tab']", has_text="クチコミ")
     if not tab.count():
@@ -45,6 +45,7 @@ def read_reviews(pg) -> dict:
             new = pg.locator("[role='menuitemradio']", has_text="新しい順")
             if new.count():
                 new.first.click(timeout=3000); time.sleep(1.2)
+                out["rv_sorted"] = True   # 新しい順に並べ替えられた（できなければ関連順＝先頭は最新ではない・2026-10-26）
     except Exception:
         pass
     def _unique_cards():

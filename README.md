@@ -5,3 +5,4 @@ Googleマップ上の公開情報を「ある時点で数えた相関」とし�
 - frame.py 母集団（都市×業種の検索一覧）
 - detail.py 店ごとの公開項目（写真枚数・営業時間・投稿・口コミの日付・返信の有無など）
 - analyze.py 集計（業種別の中央値）
+- numbers_build.py 調査の数字の正本 data/numbers.json を作る（analyze.py・survey_stats.py を回し直し、~/sales-automation-1plan/data/numbers.json にも書く。調査を足したら必ずこれを回す）

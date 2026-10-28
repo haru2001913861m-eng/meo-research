@@ -33,7 +33,7 @@ RENDER_SVC = "srv-dbcq6bgm7kps73ciqm4g"
 ACCT = "https://mybusinessaccountmanagement.googleapis.com/v1/accounts"
 SCOPE = ["https://www.googleapis.com/auth/business.manage"]
 REMIND_FROM = date(2026, 10, 28)   # 審査 7 営業日の目安
-CASE = "4-5844000041982"
+CASE = "6-9035000042057"   # 2026-10-28 再申請
 KEY_CMD = "cd ~/sales-automation && git pull origin master && python3 scripts/gbp_auth.py --yes"
 
 

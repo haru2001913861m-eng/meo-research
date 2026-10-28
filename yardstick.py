@@ -17,17 +17,19 @@ def rr(d):
 def summary(lst):
     return {"n": len(lst), "reviews": round(st.median([d.get("list_reviews") or 0 for d in lst])),
             "per_month": round(st.median([vel(d) for d in lst]), 1), "reply_rate": round(sum(rr(d) for d in lst) / len(lst), 2),
-            "star": round(st.median([d.get("list_rating") or 0 for d in lst]), 1)}
+            "star": round(st.median([d.get("list_rating") or 0 for d in lst]), 1),
+            "photos": round(st.median([d.get("photos") or 0 for d in lst]))}   # 写真の枚数（オーナー＋お客さん・2026-10-16 写真200枚の物差し）
 groups = collections.defaultdict(list)
 for d in rows: groups[(d["city"], d["industry"])].append(d)
-out = {"by_city": {}, "by_industry": {}, "all": {}, "made": "2026-10-12", "source": "全国14,504店（同じ都市×業種の一覧の先頭1割・中央値）"}
-top_all, top_ind = [], collections.defaultdict(list)
+out = {"by_city": {}, "by_industry": {}, "all": {}, "rest": {}, "made": "2026-10-16", "source": "全国14,504店（同じ都市×業種の一覧の先頭1割・中央値）"}
+top_all, top_ind, rest_all = [], collections.defaultdict(list), []
 for (city, ind), lst in groups.items():
     if len(lst) < 10: continue
-    lst.sort(key=lambda d: d["rank"]); k = max(1, math.ceil(len(lst) * 0.1)); top = lst[:k]
+    lst.sort(key=lambda d: d["rank"]); k = max(1, math.ceil(len(lst) * 0.1)); top = lst[:k]; rest_all += lst[k:]
     out["by_city"][f"{city}|{ind}"] = summary(top); top_all += top; top_ind[ind] += top
 for ind, lst in top_ind.items(): out["by_industry"][ind] = summary(lst)
 out["all"] = summary(top_all)
+out["rest"] = summary(rest_all)          # 先頭1割以外（比べる相手）
 path = os.path.expanduser("~/sales-automation/data/meo_top10_yardstick.json")
 json.dump(out, open(path, "w"), ensure_ascii=False, indent=0)
 print(path, len(out["by_city"]), "組", out["by_industry"])

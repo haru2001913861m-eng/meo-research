@@ -143,7 +143,8 @@ def main():
     # G: 営業時間の細かさ
     print(table("G. 営業時間の設定 × 口コミ（中央値）", split(None, [
         ("7曜日すべて設定", lambda d: d.get("hours_days") == 7), ("曜日が欠けている", lambda d: d.get("hours_days") is not None and 0 < d["hours_days"] < 7),
-        ("祝日の特別営業時間あり", lambda d: d.get("special_hours")), ("祝日の設定なし", lambda d: d.get("special_hours") is False),
+        # special_hours＝営業時間表に「時間変更の可能性」等の表示（detail.py）＝祝日の時間をまだ確かめていない店（2026-10-18: 旧見出し「祝日の特別営業時間あり／祝日の設定なし」は向きが逆に読めた）
+        ("祝日の時間が未確認（時間変更の可能性）", lambda d: d.get("special_hours")), ("祝日の表示なし（確認済み）", lambda d: d.get("special_hours") is False),
         ("休憩時間あり", lambda d: d.get("hours_break")), ("オーナー未確認", lambda d: d.get("unclaimed"))]), hdr))
 
 

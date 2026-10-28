@@ -45,7 +45,7 @@ def clients() -> list[dict]:
     return out
 
 
-TOP: list = []   # 直前の検索の上位（周辺店の比較用・プレミアム）
+TOP: list = []   # 直前の検索の上位（周辺店の比較用・全店）
 EN_STATS: dict = {}   # 直前の英語の検索で、英字の店名の店が何店か（英字の店名の助言に使う・2026-10-17）
 
 
@@ -188,9 +188,9 @@ def main():
             try:
                 for j, kw in enumerate(c.get("keywords", []) if c.get("_full") else []):
                     obs["ranks"].append({"kw": kw, "rank": rank_of(pg, kw, c.get("cid", ""), c.get("shop", ""))}); nap()
-                    if j == 0 and c.get("pack") == "プレミアム":
+                    if j == 0:   # 周辺上位3店との比較は全店（まるごとパック・2026-10-18）
                         obs["competitors"] = TOP[:3]
-                # 英語の地図（スタンダード以上・台帳の keywords_en / need_en_profile は Railway の meo_screens が置く）
+                # 英語の地図（英語をやる店だけ・台帳の keywords_en / need_en_profile は Railway の meo_screens が置く）
                 if c.get("need_en_profile") and c.get("place_url"):
                     import en_rank
                     shop = en_rank.find_shop(pg, c["place_url"])
@@ -202,8 +202,7 @@ def main():
                     obs.setdefault("ranks_en", []).append({"kw": kw, "rank": rank_of(pg, kw, c.get("cid", ""), "", "en")}); nap()
                     if j == 0:
                         obs["en_stats"] = en_stats()
-                        if c.get("pack") == "プレミアム":
-                            obs["competitors_en"] = TOP[:3]
+                        obs["competitors_en"] = TOP[:3]
                 job = c.get("ai_job") or {}
                 if job and job.get("due", "9999") <= time.strftime("%Y-%m-%d") and job.get("area"):
                     import ai_ask

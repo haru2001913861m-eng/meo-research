@@ -170,7 +170,7 @@ def message(r: dict, shop_label: str) -> str:
         lines.append("英語で探す旅行者の画面は、これから上の席を取りにいける状態です。")
     if r.get("en_top10_reviews_median"):
         lines.append(f"英語の画面で上位10に入っているお店の口コミは、中央値{int(r['en_top10_reviews_median'])}件でした。")
-    lines += ["", "英語を話さずに、旅行者の画面で上に出る手順は「note」と送ると届きます。任せたいときは「プランを見る」と送ってください。",
+    lines += ["", "英語を話さずに、旅行者の画面で上に出る手順は「note」と送ると届きます。任せたいときは「月額と中身を見る」と送ってください。",
               f"※{r['at']}に調べた位置です。検索のたびに少し動きます。"]
     return "\n".join(lines)
 

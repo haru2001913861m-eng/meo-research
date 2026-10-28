@@ -19,7 +19,7 @@ CITIES = [("東京 新宿", "Shinjuku Tokyo"), ("東京 渋谷", "Shibuya Tokyo"
 INDUSTRIES = [("ラーメン", "ramen"), ("寿司", "sushi"), ("居酒屋", "izakaya"), ("カフェ", "cafe"), ("焼肉", "yakiniku"), ("マッサージ", "massage")]
 OUT = os.path.join(DATA, os.getenv("INB_FRAME_OUT", "inb_frame.jsonl"))
 DONE = os.path.join(DATA, os.getenv("INB_FRAME_DONE", "inb_frame_done.json"))
-TOPN = 20
+TOPN = int(os.getenv("INB_TOPN", "60"))   # 10/11 会長: 上位だけでは差が出ない → 下位（31〜60位）まで取って比べる
 
 RE_JA = re.compile(r"(\d\.\d) つ星 クチコミ ([\d,]+) 件")
 RE_EN = re.compile(r"(\d\.\d) stars ([\d,]+) [Rr]eviews")
@@ -83,19 +83,36 @@ def run(limit: int | None = None):
                 b, ctx = browser(p)
                 pg = ctx.new_page()
             try:
-                pg.goto("https://www.google.com/maps/search/" + q + f"?hl={lang}", wait_until="domcontentloaded", timeout=40000)
+                url = "https://www.google.com/maps/search/" + q + f"?hl={lang}"
+                for att in range(3):   # 10/11 3〜4回に1回、応答が止まって goto が時間切れ → 新しいタブで取り直す
+                    try:
+                        pg.goto(url, wait_until="commit", timeout=25000)
+                        break
+                    except Exception as e:
+                        if att == 2:
+                            raise
+                        print(f"[inb_frame] 取り直し{att + 1} [{lang}] {q}: {str(e)[:40]}", flush=True)
+                        try:
+                            pg.close()
+                        except Exception:
+                            pass
+                        time.sleep(5 + 5 * att)
+                        pg = ctx.new_page()
                 accept_consent(pg)
                 if blocked(pg):
                     on_block(pg, "inb_frame")
                     continue
                 pg.wait_for_selector("div[role='feed']", timeout=25000)
                 feed = pg.locator("div[role='feed']")
-                last = -1
-                for _ in range(4):
+                last, still = -1, 0
+                for _ in range(TOPN // 5 + 4):
                     feed.evaluate("el => el.scrollBy(0, 5000)")
-                    time.sleep(1.1)
+                    time.sleep(1.2)
                     cnt = pg.locator("div[role='feed'] a[href*='/maps/place/']").count()
-                    if cnt == last or cnt >= TOPN:
+                    if cnt >= TOPN:
+                        break
+                    still = still + 1 if cnt == last else 0
+                    if still >= 2:   # 2回続けて増えない＝一覧の終わり
                         break
                     last = cnt
                 items = pg.locator("div[role='feed'] a[href*='/maps/place/']")
