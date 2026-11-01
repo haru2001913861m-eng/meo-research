@@ -12,6 +12,11 @@ UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML,
 IN_CI = os.getenv("CI") == "true"
 
 
+# hitotsunagi861 の Google アカウントにログインできなくなった時の止め札（2026-11-01 夜・9個の自動のブラウザが同じアカウントだった）。
+# この札がある間は、ログインした Chrome（GMAPS_PROFILE・いつもの Chrome の claude --chrome）を一切開かない
+GOOGLE_HOLD = os.path.expanduser("~/.config/hitotsunagi/google_hold")
+
+
 class Blocked(RuntimeError):
     pass
 
@@ -20,6 +25,8 @@ def browser(p, headless=True, profile: str | None = None):
     # 10/12: ログインなし・画面なしだと Google マップが「機能を絞った表示」（口コミ5件・言語不明）になる。
     # 調査用アカウントでログインした Chrome プロファイルを、画面ありで画面の外に置いて使うと普通の表示になる（実測）。
     profile = profile or os.getenv("GMAPS_PROFILE")
+    if profile and os.path.exists(GOOGLE_HOLD):
+        raise Blocked("hitotsunagi861 のログインが止められているので、ログインした Chrome は開かない（" + GOOGLE_HOLD + " を消すと再開）")
     if profile:
         ctx = p.chromium.launch_persistent_context(
             profile, channel="chrome", headless=False, viewport={"width": 1280, "height": 1000}, locale="en-US",
