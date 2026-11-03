@@ -207,7 +207,7 @@ def main():
                 if job and job.get("due", "9999") <= time.strftime("%Y-%m-%d") and job.get("area"):
                     import ai_ask
                     a = ai_ask.check(c.get("shop", ""), (c.get("en") or {}).get("name_en") or (c.get("en") or {}).get("name_en_sheet", ""),
-                                     job["area"], job.get("city_en", ""), job.get("industry", ""), tuple(job["langs"]), int(job.get("runs", 3)), who=c["client_id"][:10])
+                                     job["area"], job.get("city_en", ""), job.get("industry", ""), tuple(job["langs"]), int(job.get("runs", 3)), who=c["client_id"][:10], claude=True)
                     obs["ai"] = ({k: v for k, v in a.items() if k != "answers"} if a.get("ok")
                                  else {"at": time.strftime("%Y-%m-%dT%H:%M:%S+09:00"), "error": a.get("why", "?")})
                 if c.get("place_url"):

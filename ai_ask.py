@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""店1軒が ChatGPT（ウェブ検索つき）の答えに出るかを数える（無料点検の③AI・月額の月報で使う・会長 2026-10-17「実際に聞く版で」）。
+"""店1軒が ChatGPT と Claude（どちらもウェブ検索つき）の答えに出るかを数える（無料点検の③AI・月額の月報で使う・会長 2026-10-17「実際に聞く版で」）。
 
 聞き方は調査（ai_visibility.py・75回・533店）と同じ文・同じモデル。店が出たかの判定も同じ（mentioned）。
 お金の上限: 1か月の合計が AI_ASK_MONTHLY_USD（既定 $15）を超えたら聞かない（{"ok": False, "why": "budget"}）。
@@ -66,7 +66,7 @@ def domain(u: str) -> str:
     return re.sub(r"^(www\.|s\.|m\.)", "", h)
 
 
-def check(name_ja: str, name_en: str, area_ja: str, city_en: str, industry: str, langs=("ja", "en"), runs: int = 1, who: str = "") -> dict:
+def check(name_ja: str, name_en: str, area_ja: str, city_en: str, industry: str, langs=("ja", "en"), runs: int = 1, who: str = "", claude: bool = False) -> dict:
     """戻り値 {ok, asked, hit, by_lang:{ja:{asked,hit}}, sources:[(domain,n)], usd, answers:[...]}"""
     est = 0.07 * len(langs) * runs
     if spent() + est > CAP:
@@ -97,6 +97,26 @@ def check(name_ja: str, name_en: str, area_ja: str, city_en: str, industry: str,
             with open(LOG, "a", encoding="utf-8") as f:
                 f.write(json.dumps({"at": datetime.now().isoformat(timespec="seconds"), "who": who, "lang": lg, "prompt": prompt, "hit": got,
                                     "urls": res["urls"][:10], "usd": round(c_, 4)}, ensure_ascii=False) + "\n")
+    # Claude にも同じ日本語の問いを聞く（会長の HP「毎月 ChatGPT と Claude に聞いて、名前が出た回数を報告」・2026-11-04）
+    cl = {"asked": 0, "hit": 0}
+    if claude and "ja" in langs and os.getenv("AI_ASK_CLAUDE", "1") != "0" and spent() + 0.15 * runs <= CAP:
+        from ai_compare import ask_claude
+        prompt = PROMPT["ja"].format(city=area_ja, ind=t4[0], city_en=area_ja, ind_en=t4[1], ind_zh=t4[2], ind_ko=t4[3])
+        for _ in range(runs):
+            try:
+                res = ask_claude(prompt)
+            except Exception as e:   # Claude が止まっても ChatGPT の結果は返す（月報に「Claude は確認できず」）
+                cl["error"] = str(e)[:120]
+                break
+            usd += res["usd"]; _add(res["usd"])
+            got = mentioned(res["text"], shop)
+            cl["asked"] += 1; cl["hit"] += int(got)
+            src.update(domain(u.removeprefix("search:")) for u in res["urls"] if u)
+            answers.append({"lang": "ja", "model": "claude", "hit": got, "prompt": prompt})
+            with open(LOG, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"at": datetime.now().isoformat(timespec="seconds"), "who": who, "lang": "ja", "model": res["model"], "prompt": prompt,
+                                    "hit": got, "urls": res["urls"][:10], "usd": round(res["usd"], 4)}, ensure_ascii=False) + "\n")
     return {"ok": True, "asked": sum(v["asked"] for v in by.values()), "hit": sum(v["hit"] for v in by.values()), "by_lang": by,
+            "by_model": {"chatgpt": {"asked": sum(v["asked"] for v in by.values()), "hit": sum(v["hit"] for v in by.values())}, "claude": cl},
             "sources": [(d, n) for d, n in src.most_common(6) if d], "usd": round(usd, 4), "answers": answers,
             "at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S+09:00")}
