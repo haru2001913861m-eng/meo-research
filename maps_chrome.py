@@ -132,11 +132,11 @@ def run_claude(prompt: str, tag: str, parser) -> dict:
 LOCK = os.path.join(HERE, "data", "chrome.lock")
 
 
-def _chrome_lock(wait: int = 900):
+def _chrome_lock(wait: int = 900, google: bool = True):
     """いつもの Chrome を同時に使えるのは1つの claude だけ（2つ目には道具が渡らない・10/31 無料点検と夜の読み取りが重なって確認）。
     1店ずつ取って放すので、夜のまとめ読みの合間に無料点検が入れる"""
     import fcntl, time
-    if os.path.exists(os.path.expanduser("~/.config/hitotsunagi/google_hold")):   # common.GOOGLE_HOLD（2026-11-01）
+    if google and os.path.exists(os.path.expanduser("~/.config/hitotsunagi/google_hold")):   # common.GOOGLE_HOLD（2026-11-01）。Google を開かない用（note の閲覧数）は通す（2026-11-03）
         print("[chrome] hitotsunagi861 のログインが止められているので開かない", flush=True)
         return None
     os.makedirs(os.path.dirname(LOCK), exist_ok=True)
