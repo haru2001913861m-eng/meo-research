@@ -56,7 +56,7 @@ def ja_profile(pg, url_ja: str) -> dict:
     return {"name_ja": name, "category_ja": cat, "address_ja": addr}
 
 
-def check(text: str, industry_hint: str = "", langs=("ja", "en"), runs: int = 1, who: str = "") -> dict:
+def check(text: str, industry_hint: str = "", langs=("ja",), runs: int = 1, who: str = "") -> dict:   # 英語の地図は 2026-11-04 にやめた（AI も日本語で聞く）
     with sync_playwright() as p:
         b, ctx = browser(p)
         pg = ctx.new_page()
@@ -104,9 +104,9 @@ def _where(k, n):
 def message(r: dict, label: str) -> str:
     """LINE の1通（②英語の地図 ③AI → 次の一歩）。順位の約束・弱気な断りは書かない。"""
     if not r.get("ok"):
-        return ("②英語の地図と③AIの点検で、お店をGoogleマップで見つけられませんでした。\n"
+        return ("地図とAIの点検で、お店をGoogleマップで見つけられませんでした。\n"
                 "Googleマップのお店のページの「共有」からリンクをコピーして、このLINEに送ってください。")
-    en = en_relevant(r)   # 外国のお客さんの兆しが無い店には英語の地図の話をしない（会長 2026-10-18「いらない提案はしない」）
+    en = False   # 英語の地図は 2026-11-04 にやめた（会長「シートのインバウンドも含めてやらないことにしよ　全て消して」）
     L = [f"【{'3つの画面' if en else '地図とAI'}の点検】{label}", ""]
     if en:
         L += ["② 英語の地図（外国のお客さんの画面）",
@@ -135,7 +135,7 @@ def message(r: dict, label: str) -> str:
               f"・口コミ50件以上：{'はい' if many else 'いいえ'}" + N.fmt("（50件以上の店は{n:ai.rv50_hi_all}、50件未満は{n:ai.rv50_lo_all}）"),
               N.fmt("・ChatGPTの出典の1位は食べログ（{n:ai.sources_tabelog}回）、Googleマップは{n:ai.sources_gmaps}回。食べログと公式サイトをGoogleマップと同じにそろえるのが近道です")]
     if r.get("has_posts") is not None:
-        L += ["", ("④ 投稿（お知らせ）：あり" if r["has_posts"] else "④ 投稿（お知らせ）：なし") + _n().fmt("（出しているお店は{n:jp.post.share}。投稿のある店は口コミの増え方が約7倍でした）")]
+        L += ["", ("③ 投稿（お知らせ）：あり" if r["has_posts"] else "③ 投稿（お知らせ）：なし") + _n().fmt("（出しているお店は{n:jp.post.share}。投稿のある店は口コミの増え方が約7倍でした）")]
     if os.path.exists(os.path.expanduser("~/sales-automation/src/meo_pricing.py")):   # 本番の LINE が1プランになってから新しい案内（それまでは本番の LINE と同じ言葉）
         L += ["", f"任せるなら、{_offer_line()}。" + ("英語の口コミへの英語の返信・英字の店名・" if en else "") + "食べログのそろえ表・毎月ChatGPTに聞いて出た回数の報告まで、こちらでやります。",
               "「月額と中身を見る」と送ると、中身が並びます。自分でやるなら「note」と送ってください。"]
